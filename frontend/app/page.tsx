@@ -1,18 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Priority = "Alta" | "Media" | "Baixa";
-type Task = { id: number; title: string; category: string; due: string; priority: Priority; done: boolean; details?: string; estimate?: string; reminder?: string };
+type Task = { id: string; title: string; category: string; due: string; priority: Priority; done: boolean; details?: string; estimate?: string; reminder?: string };
 type Toast = { message: string; tone: "success" | "neutral" | "danger" };
-
-const notebookTasks: Task[] = [
-  { id: 1, title: "Finalizar apresentacao do projeto", category: "Trabalho", due: "Hoje, 14:00", priority: "Alta", done: false },
-  { id: 2, title: "Responder e-mails importantes", category: "Trabalho", due: "Hoje, 16:30", priority: "Media", done: false },
-  { id: 3, title: "Comprar ingredientes para o jantar", category: "Pessoal", due: "Hoje, 18:00", priority: "Baixa", done: false },
-  { id: 4, title: "Revisar planejamento da semana", category: "Pessoal", due: "Amanha, 09:00", priority: "Media", done: false },
-  { id: 5, title: "Agendar consulta medica", category: "Saude", due: "Amanha, 11:00", priority: "Alta", done: true },
-];
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3333";
 
 const priorityClass: Record<Priority, string> = {
   Alta: "task-priority task-priority-high",
@@ -21,13 +14,20 @@ const priorityClass: Record<Priority, string> = {
 };
 
 export default function Home() {
-  const [tasks, setTasks] = useState(notebookTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [filter, setFilter] = useState("Hoje");
   const [query, setQuery] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/tasks`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data: Task[]) => setTasks(data))
+      .catch(() => showToast("Nao foi possivel conectar ao backend.", "danger"));
+  }, []);
 
   const todayOpen = tasks.filter((task) => !task.done && task.due.startsWith("Hoje")).length;
   const visibleTasks = useMemo(() => tasks.filter((task) => {
@@ -44,28 +44,48 @@ export default function Home() {
     toastTimeout.current = setTimeout(() => setToast(null), 3600);
   }
 
-  function toggleTask(id: number) {
+  async function toggleTask(id: string) {
     const task = tasks.find((item) => item.id === id);
     if (!task) return;
-    setTasks((current) => current.map((item) => item.id === id ? { ...item, done: !item.done } : item));
-    showToast(task.done ? `Tarefa reaberta: ${task.title}` : `Tarefa concluida: ${task.title}`, task.done ? "neutral" : "success");
+    try {
+      const response = await fetch(`${API_URL}/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ done: !task.done }) });
+      if (!response.ok) throw new Error();
+      const updatedTask: Task = await response.json();
+      setTasks((current) => current.map((item) => item.id === id ? updatedTask : item));
+      showToast(task.done ? `Tarefa reaberta: ${task.title}` : `Tarefa concluida: ${task.title}`, task.done ? "neutral" : "success");
+    } catch {
+      showToast("Nao foi possivel atualizar a tarefa.", "danger");
+    }
   }
 
-  function deleteTask(task: Task) {
-    setTasks((current) => current.filter((item) => item.id !== task.id));
-    showToast(`Tarefa apagada: ${task.title}`, "danger");
+  async function deleteTask(task: Task) {
+    try {
+      const response = await fetch(`${API_URL}/api/tasks/${task.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error();
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+      showToast(`Tarefa apagada: ${task.title}`, "danger");
+    } catch {
+      showToast("Nao foi possivel excluir a tarefa.", "danger");
+    }
   }
 
-  function addTask(event: FormEvent<HTMLFormElement>) {
+  async function addTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const title = String(data.get("title") || "").trim();
     if (!title) return;
     const date = String(data.get("date") || "Hoje");
     const time = String(data.get("time") || "09:00");
-    setTasks((current) => [{ id: Date.now(), title, category: String(data.get("category") || "Pessoal"), due: `${date}, ${time}`, priority: String(data.get("priority") || "Media") as Priority, details: String(data.get("details") || "").trim(), estimate: String(data.get("estimate") || ""), reminder: String(data.get("reminder") || ""), done: false }, ...current]);
-    setShowModal(false);
-    showToast(`Nova tarefa cadastrada: ${title}`, "success");
+    try {
+      const response = await fetch(`${API_URL}/api/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, category: String(data.get("category") || "Pessoal"), due: `${date}, ${time}`, priority: String(data.get("priority") || "Media"), details: String(data.get("details") || "").trim(), estimate: String(data.get("estimate") || ""), reminder: String(data.get("reminder") || "") }) });
+      if (!response.ok) throw new Error();
+      const task: Task = await response.json();
+      setTasks((current) => [task, ...current]);
+      setShowModal(false);
+      showToast(`Nova tarefa cadastrada: ${title}`, "success");
+    } catch {
+      showToast("Nao foi possivel cadastrar a tarefa.", "danger");
+    }
   }
 
   return (
