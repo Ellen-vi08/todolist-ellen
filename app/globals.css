@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f8f8fb;
+  color: #262338;
+  font-family: Arial, Helvetica, sans-serif;
+}
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+.check { appearance: none; width: 20px; height: 20px; border: 2px solid #ddd9e7; border-radius: 6px; display: grid; place-items: center; }
+.check:checked { border-color: #7061f4; background: #7061f4; }
+.check:checked::after { content: "✓"; color: white; font-size: 13px; font-weight: 700; }
